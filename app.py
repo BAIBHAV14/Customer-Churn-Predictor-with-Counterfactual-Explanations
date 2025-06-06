@@ -13,7 +13,7 @@ st.set_page_config(page_title="Customer Churn Predictor", layout="wide")
 st.title("📉 Customer Churn Predictor with Counterfactual Explanations")
 
 # --- Load Assets ---
-model = torch.load("saved_files/churn_model.pth")
+model = torch.load("saved_files/full_model.pth", map_location=torch.device("cpu"))
 model.eval()
 preprocessor = joblib.load("saved_files/preprocessor.joblib")
 X_test = np.load("saved_files/X_test.npy")
@@ -50,8 +50,10 @@ with st.sidebar.form("churn_form"):
         user_input[feature] = st.number_input(feature, value=1.0)
 
     for feature in categorical_features:
-        # These should match training categories
-        user_input[feature] = st.selectbox(feature, options=preprocessor.named_transformers_['cat'].categories_[categorical_features.index(feature)])
+        user_input[feature] = st.selectbox(
+            feature,
+            options=preprocessor.named_transformers_['cat'].categories_[categorical_features.index(feature)]
+        )
 
     submitted = st.form_submit_button("Predict")
 
