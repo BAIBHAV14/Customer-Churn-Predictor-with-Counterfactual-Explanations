@@ -1,5 +1,6 @@
 import streamlit as st
 import torch
+import torch.nn as nn
 import numpy as np
 import joblib
 import pandas as pd
@@ -12,14 +13,25 @@ from utils.visualize import plot_changes
 st.set_page_config(page_title="Customer Churn Predictor", layout="wide")
 st.title("📉 Customer Churn Predictor with Counterfactual Explanations")
 
-# --- Load Assets ---
-model = torch.load("saved_files/full_model.pth", map_location=torch.device("cpu"))
-model.eval()
-preprocessor = joblib.load("saved_files/preprocessor.joblib")
-X_test = np.load("saved_files/X_test.npy")
-y_test = np.load("saved_files/y_test.npy")
+# --- Define the Model Architecture ---
+class ChurnNet(nn.Module):
+    def __init__(self, input_dim):
+        super(ChurnNet, self).__init__()
+        self.model = nn.Sequential(
+            nn.Linear(input_dim, 64),
+            nn.ReLU(),
+            nn.Dropout(0.2),
+            nn.Linear(64, 32),
+            nn.ReLU(),
+            nn.Linear(32, 1),
+            nn.Sigmoid()
+        )
 
-# Load feature names
+    def forward(self, x):
+        return self.model(x)
+
+# --- Load Assets ---
+# Feature info
 numeric_features = [
     'Tenure', 'CityTier', 'WarehouseToHome', 'HourSpendOnApp',
     'NumberOfDeviceRegistered', 'SatisfactionScore', 'NumberOfAddress',
@@ -30,8 +42,21 @@ categorical_features = [
     'PreferredLoginDevice', 'PreferredPaymentMode', 'Gender',
     'PreferedOrderCat', 'MaritalStatus'
 ]
+
+# Preprocessor & test data
+preprocessor = joblib.load("saved_files/preprocessor.joblib")
+X_test = np.load("saved_files/X_test.npy")
+y_test = np.load("saved_files/y_test.npy")
+
+# Extract feature names after preprocessing
 cat_names = preprocessor.named_transformers_['cat'].named_steps['onehot'].get_feature_names_out(categorical_features)
 feature_names = np.concatenate([numeric_features, cat_names])
+
+# Load the model
+input_dim = X_test.shape[1]
+model = ChurnNet(input_dim)
+model.load_state_dict(torch.load("saved_files/churn_model.pth", map_location=torch.device("cpu")))
+model.eval()
 
 # For evaluation
 feature_mins = np.zeros(len(feature_names))
@@ -61,9 +86,9 @@ with st.sidebar.form("churn_form"):
 if submitted:
     df_input = pd.DataFrame([user_input])
     x_transformed = preprocessor.transform(df_input)
-    x_tensor = torch.tensor(x_transformed[0], dtype=torch.float32).unsqueeze(0)  # Add batch dim
-    pred_score = model(x_tensor).item()
+    x_tensor = torch.tensor(x_transformed[0], dtype=torch.float32).unsqueeze(0)
 
+    pred_score = model(x_tensor).item()
     st.subheader(f"Prediction: {'Churn' if pred_score > 0.5 else 'No Churn'} (Score: {pred_score:.3f})")
 
     if pred_score > 0.5:
